@@ -9,7 +9,7 @@ flex tarea1.lex && gcc -o tarea1.exe lex.yy.c -ll
 
 ---
 
-## Guía rápida de Git (para los que nunca lo han usado)
+## Guía GIT
 
 ### 1. Clonar el repositorio
 
