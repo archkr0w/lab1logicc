@@ -1,0 +1,1 @@
+$$\mbox{\bf p} \rightarrow \mbox{\bf q} , \mbox{\bf p} \rightarrow \neg \mbox{\bf q} \vdash \neg \mbox{\bf p}$$

@@ -1,0 +1,12 @@
+# Informe y fuentes (no se trackean)
+informe.tex
+informe.pdf
+Logo-2016.png
+
+# Archivos generados por la compilación de flex
+lex.yy.c
+tarea1.exe
+*.o
+
+# macOS
+.DS_Store

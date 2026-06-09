@@ -1,0 +1,1 @@
+$$\mbox{\bf p} , \mbox{\bf q} \vdash \mbox{\bf p} \wedge \mbox{\bf q}$$

@@ -1,0 +1,27 @@
+Tarea 1 - Deduccion Natural con LEX
+Logica Computacional 22625
+Nicolas Maldonado - Felipe Ugalde
+
+COMPILACION
+
+   flex tarea1.lex
+   gcc -o tarea1.exe lex.yy.c -lfl
+
+   Si el sistema usa -ll en lugar de -lfl:
+   gcc -o tarea1.exe lex.yy.c -ll
+
+EJECUCION
+
+   ./tarea1.exe < expresion.txt
+
+   El archivo de entrada contiene sequents escritos en LaTeX,
+   cada uno delimitado por $$. La salida es la demostracion
+   en formato LaTeX lista para compilar.
+
+ARCHIVOS
+
+   tarea1.lex                       codigo fuente
+   expresion.txt a expresion6.txt   archivo de prueba
+   informe.tex                      fuente del informe
+   informe.pdf                      informe compilado
+   README                           este archivo
