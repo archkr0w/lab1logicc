@@ -1,8 +1,178 @@
-Tarea 1 - Deduccion Natural con LEX
-Logica Computacional 22625
-Nicolas Maldonado - Felipe Ugalde
+===============================================================================
+ Tarea 1 - Deduccion Natural con LEX
+ Logica Computacional 22625
+ Santiago de Chile, 15/5/2026
+===============================================================================
 
-COMPILACION
+
+1. QUE HACE EL PROGRAMA
+-------------------------------------------------------------------------------
+
+   El programa recibe un "sequent" de logica proposicional escrito en LaTeX
+   (un conjunto de premisas, el simbolo \vdash, y una conclusion) y construye
+   AUTOMATICAMENTE una demostracion formal de que la conclusion se sigue de
+   las premisas usando las reglas de la Deduccion Natural.
+
+   La salida es la demostracion completa, ya formateada como una tabla LaTeX
+   lista para compilar, con cada linea numerada y su justificacion (que regla
+   se aplico y sobre que lineas). Las lineas se colorean por nivel de
+   anidamiento de supuestos para que las "cajas" de las sub-demostraciones se
+   distingan a simple vista.
+
+   Si no logra encontrar una demostracion, imprime un comentario LaTeX:
+   "% No se pudo demostrar."
+
+   Ejemplo. Entrada (expresion3.txt):
+
+      $$\mbox{\bf p} \rightarrow \mbox{\bf q} , \mbox{\bf p} \vdash \mbox{\bf q}$$
+
+   Esto es el modus ponens: de "p -> q" y "p" se concluye "q". El programa
+   reconoce que q es el consecuente de una implicacion cuyo antecedente (p)
+   ya esta disponible, aplica ->_e (eliminacion de la implicacion) y emite la
+   tabla con las tres lineas: las dos premisas y la conclusion justificada.
+
+
+2. ARQUITECTURA GENERAL
+-------------------------------------------------------------------------------
+
+   El flujo es de cuatro etapas. Todo vive en un solo archivo .lex porque la
+   tarea pide usar flex; el grueso de la logica esta en el bloque de C dentro
+   del .lex, no en las reglas lexicas.
+
+      LaTeX  ->  [1] Lexer (flex)  ->  tokens
+             ->  [2] Parser        ->  formula en forma canonica prefija
+             ->  [3] Motor de deduccion -> tabla de lineas + justificaciones
+             ->  [4] Impresion     ->  tabla LaTeX coloreada
+
+   [1] LEXER (la parte propiamente "flex", al final del archivo).
+       Las reglas lexicas reconocen los pedazos de LaTeX y los convierten en
+       una secuencia de tokens enteros:
+
+          \mbox{\bf x}   ->  TOK_VAR   (y se guarda el nombre "x")
+          \neg           ->  TOK_NEG
+          \wedge         ->  TOK_AND
+          \rightarrow    ->  TOK_IMP
+          \vdash         ->  TOK_VDASH
+          ( ) ,          ->  TOK_LPAREN / TOK_RPAREN / TOK_COMMA
+          $$             ->  delimitador (abre/cierra el sequent)
+
+       La variable global "dentro" controla que solo se tokenice lo que esta
+       entre los dos $$. Cuando aparece el segundo $$ se llama a procesa(),
+       que dispara las etapas 2 a 4.
+
+   [2] PARSER (parse_*). Es un analizador de descenso recursivo que respeta
+       la precedencia y la asociatividad de los operadores:
+
+          implicacion  (la mas debil, asocia a la DERECHA)
+          conjuncion   (asocia a la IZQUIERDA)
+          negacion     (unaria, prefija)
+          atomo        (variable o "(" formula ")")
+
+       La asociatividad a la derecha de -> se logra con recursion
+       (parse_implication se llama a si misma para el lado derecho); la
+       asociatividad a la izquierda de ^ se logra con un bucle.
+
+   [3] y [4] estan descritos en las secciones 4 y 5.
+
+
+3. REPRESENTACION INTERNA DE LAS FORMULAS
+-------------------------------------------------------------------------------
+
+   Cada formula se guarda como un STRING en notacion PREFIJA con prefijos de
+   un caracter para los nodos internos:
+
+          '0'  negacion        ->  0(A)
+          '1'  conjuncion      ->  1(A,B)
+          '2'  implicacion     ->  2(A,B)
+          variable             ->  el nombre tal cual ("p", "q", ...)
+
+   Por ejemplo "p -> q" se guarda como  2(p,q)  y  "~(p ^ q)"  como  0(1(p,q)).
+
+   Esta representacion fue la decision clave del diseno: al ser prefija y con
+   parentesis explicitos, comparar dos formulas es comparar dos strings
+   (funcion sequ), y extraer un sub-arbol es recorrer caracteres contando
+   parentesis (funcion get_sub, que devuelve el primer o segundo argumento de
+   un operador binario). Asi no hace falta construir un arbol con punteros ni
+   liberar memoria; toda la manipulacion es sobre arreglos de char de tamano
+   fijo (FMAX). La impresion a LaTeX (pflat) es la operacion inversa: recorre
+   el string canonico y reconstruye \neg, \wedge, \rightarrow agregando
+   parentesis solo cuando la precedencia lo exige.
+
+
+4. EL MOTOR DE DEDUCCION (el corazon de la tarea)
+-------------------------------------------------------------------------------
+
+   La demostracion se construye en una TABLA (arreglos tab[], jus[], niv[]):
+   cada fila es una formula, su justificacion y el nivel de anidamiento de
+   supuestos al que pertenece. Las premisas entran en nivel 0; cada supuesto
+   abre un nivel mas (nivel 1, 2, ...).
+
+   El motor combina dos estrategias clasicas:
+
+   (A) SATURACION HACIA ADELANTE  -- funcion satura()
+       Aplica repetidamente, hasta punto fijo (hasta que no se agregue nada
+       nuevo), todas las reglas de ELIMINACION e inferencia directa:
+
+          extrae_and       de A^B obtiene A y B            (^_e1, ^_e2)
+          extrae_neg       de ~~A obtiene A                (~~_e)
+          expande_neg_imp  de ~(A->B) obtiene A y ~B
+          adelante_and     arma A^B si ambos estan y sirve de antecedente (^_i)
+          adelante_imp     modus ponens: de A->B y A obtiene B   (->_e)
+          adelante_mt      modus tollens: de A->B y ~B obtiene ~A (MT)
+
+       La idea es "explotar" todo lo que ya se sabe antes de intentar nada
+       costoso. Cada regla solo agrega lo que aun no existe en la tabla, lo
+       que garantiza que el punto fijo se alcanza y no hay bucles infinitos.
+
+   (B) BUSQUEDA HACIA ATRAS dirigida por el objetivo -- demuestra() y elimina()
+       Para demostrar una meta m, se intenta, en orden:
+
+          1. Ya esta en la tabla         -> listo.
+          2. elimina(m): derivarla con las reglas de eliminacion
+             (incluye ex falso quodlibet: si hay una contradiccion A y ~A en
+              la tabla, cualquier cosa es derivable -- bot_e; tambien modus
+              ponens y modus tollens "al reves", pidiendo recursivamente
+              demostrar el antecedente que falta).
+          3. ->_i : si m = A -> B, se SUPONE A (abre un nivel) y se intenta
+             demostrar B; al lograrlo se cierra la caja con ->_i.
+          4. ~~_i : si m = ~~A, demostrar A y luego introducir la doble neg.
+          5. ~_i (reduccion al absurdo): si m = ~A, se SUPONE A, se satura, y
+             se busca una contradiccion (alguna formula B junto con su ~B); al
+             encontrarla se cierra con ~_i.
+
+       Las funciones se llaman recursivamente (demuestra <-> elimina), con un
+       limite de profundidad (prof > 20) para cortar busquedas que no
+       convergen. Cada vez que un camino falla se restaura el tamano de la
+       tabla (ntab = sv) para no dejar lineas "basura" de intentos fallidos.
+
+   Por que las dos estrategias juntas: la saturacion hacia adelante resuelve
+   solita las cadenas de modus ponens/tollens (p.ej. ~s->~r, ~r->~q, ...),
+   mientras que la busqueda hacia atras es la unica forma de decidir CUANDO
+   abrir un supuesto (->_i, ~_i), que es lo que no se puede adivinar mirando
+   solo las premisas. El modus tollens hacia adelante (adelante_mt) se agrego
+   justamente porque ciertas cadenas de contrapositivas no cerraban solo con
+   el encadenamiento hacia atras.
+
+
+5. FORMATO DE SALIDA
+-------------------------------------------------------------------------------
+
+   imprime() emite un entorno tabular de tres columnas: numero de linea,
+   formula (en modo matematico) y justificacion. El nivel de anidamiento se
+   traduce a color para visualizar los supuestos:
+
+          nivel 0   premisas, sin color
+          nivel 1   verde
+          nivel 2   rojo
+          nivel 3+  azul
+
+   Las justificaciones usan la notacion estandar: \rightarrow_e, \rightarrow_i,
+   \wedge_i, \wedge_{e1}, \wedge_{e2}, \neg\neg_e, \neg_i, MT, \bot_e, etc.,
+   con los numeros de las lineas de las que se derivan.
+
+
+6. COMPILACION
+-------------------------------------------------------------------------------
 
    flex tarea1.lex
    gcc -o tarea1.exe lex.yy.c -lfl
@@ -10,18 +180,69 @@ COMPILACION
    Si el sistema usa -ll en lugar de -lfl:
    gcc -o tarea1.exe lex.yy.c -ll
 
-EJECUCION
+   (flex genera lex.yy.c a partir de tarea1.lex; gcc lo compila enlazando la
+    libreria de flex. Ninguno de los dos archivos generados se versiona.)
+
+
+7. EJECUCION
+-------------------------------------------------------------------------------
 
    ./tarea1.exe < expresion.txt
 
-   El archivo de entrada contiene sequents escritos en LaTeX,
-   cada uno delimitado por $$. La salida es la demostracion
-   en formato LaTeX lista para compilar.
+   El archivo de entrada contiene uno o mas sequents escritos en LaTeX, cada
+   uno delimitado por $$ ... $$. La salida es la demostracion en formato LaTeX
+   lista para pegar y compilar.
 
-ARCHIVOS
 
-   tarea1.lex                       codigo fuente
-   expresion.txt a expresion6.txt   archivo de prueba
-   informe.tex                      fuente del informe
-   informe.pdf                      informe compilado
+8. ARCHIVOS DE PRUEBA
+-------------------------------------------------------------------------------
+
+   Cada ejemplo ejercita una parte distinta del motor:
+
+   expresion.txt    q->r, ~q->~p |- p->r
+                    Encadenamiento por contrapositiva. Requiere abrir el
+                    supuesto p (->_i) y combinar modus tollens con modus
+                    ponens.
+
+   expresion2.txt   q->r |- (~q->~p) -> (p->r)
+                    Como el anterior pero con la implicacion anidada en la
+                    conclusion: obliga a abrir DOS supuestos (dos niveles).
+
+   expresion3.txt   p->q, p |- q
+                    Modus ponens puro (->_e). El caso minimo.
+
+   expresion4.txt   p, q |- p^q
+                    Introduccion de la conjuncion (^_i).
+
+   expresion5.txt   p->q, p->~q |- ~p
+                    Reduccion al absurdo (~_i): suponer p lleva a q y a ~q a
+                    la vez, contradiccion -> ~p.
+
+   expresion6.txt   |- (~q->~p) -> (p->q)
+                    Teorema (sin premisas). Combina apertura de supuestos,
+                    doble negacion y absurdo.
+
+
+9. ARCHIVOS DEL PROYECTO (versionados)
+-------------------------------------------------------------------------------
+
+   tarea1.lex                       codigo fuente (lexer + motor en C)
+   expresion.txt a expresion6.txt   casos de prueba
    README                           este archivo
+   .gitignore                       define que no se versiona
+
+   No se versionan: el informe (informe.tex, informe.pdf), el logo
+   (Logo-2016.png) ni los archivos generados por la compilacion
+   (lex.yy.c, tarea1.exe).
+
+
+10. LIMITACIONES CONOCIDAS
+-------------------------------------------------------------------------------
+
+   - Solo se manejan los conectivos negacion (~), conjuncion (^) e
+     implicacion (->). No hay disyuncion ni bicondicional.
+   - Los tamanos son fijos (MAX lineas, FMAX caracteres por formula). Subir
+     MAX exige cuidado: tab[] y jus[] son arreglos grandes y algunas funciones
+     usan buffers locales, asi que un MAX muy alto puede desbordar la pila.
+   - La busqueda tiene un limite de profundidad (20). Demostraciones que
+     necesiten anidar mas supuestos que eso no se encontraran.
