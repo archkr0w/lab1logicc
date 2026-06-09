@@ -1,3 +1,8 @@
+<p align="center">
+  <img src="frieren.jpg" width="450" alt="Frieren">
+</p>
+
+```
 ===============================================================================
  Tarea 1 - Deduccion Natural con LEX
  Logica Computacional 22625
@@ -228,7 +233,8 @@
 
    tarea1.lex                       codigo fuente (lexer + motor en C)
    expresion.txt a expresion6.txt   casos de prueba
-   README                           este archivo
+   README.md                        este archivo
+   frieren.jpg                      imagen de portada
    .gitignore                       define que no se versiona
 
    No se versionan: el informe (informe.tex, informe.pdf), el logo
@@ -246,3 +252,4 @@
      usan buffers locales, asi que un MAX muy alto puede desbordar la pila.
    - La busqueda tiene un limite de profundidad (20). Demostraciones que
      necesiten anidar mas supuestos que eso no se encontraran.
+```
